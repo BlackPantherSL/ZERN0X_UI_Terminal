@@ -1,0 +1,60 @@
+<script>
+        // 1. Matrix Background Logic (Kept from your original)
+        const c = document.getElementById('matrix'); const ctx = c.getContext('2d');
+        c.width = window.innerWidth; c.height = window.innerHeight;
+        const s = "01"; const f = 16; const cols = c.width / f; const drops = Array(Math.floor(cols)).fill(1);
+        function d() {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.05)"; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.fillStyle = "#0F0"; ctx.font = f + "px monospace";
+            drops.forEach((y, i) => {
+                const txt = s[Math.floor(Math.random() * s.length)];
+                ctx.fillText(txt, i * f, y * f);
+                if (y * f > c.height && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            });
+        }
+        setInterval(d, 40);
+
+        // 2. NEW: Telegram Cloud Data Fetcher
+        const botToken = "8748792185:AAGwPcaQwzh-r5oo9-tjvoPQVuo8q_45v-Y";
+
+        async function refresh() {
+            try {
+                // Fetch the last few messages from the bot
+                const response = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?offset=-5`);
+                const json = await response.json();
+                const container = document.getElementById('data-content');
+                
+                // Filter messages to find the one containing our #VAULT_SYNC tag
+                const syncMessages = json.result.filter(m => 
+                    m.message && m.message.text && m.message.text.includes("#VAULT_SYNC")
+                );
+
+                if (syncMessages.length > 0) {
+                    // Get the latest sync message
+                    const latestMsg = syncMessages[syncMessages.length - 1].message.text;
+                    // Split the tag from the actual JSON data
+                    const jsonData = JSON.parse(latestMsg.split('\n')[1]);
+                    
+                    // Clear the terminal (except for the header) and update
+                    container.innerHTML = `
+                        <p class="line">SYSTEM_CHECK: <span class="cmd">STABLE</span></p>
+                        <p class="line">LINK_STATE: <span class="cmd">CLOUD_LINK_ACTIVE</span></p>
+                    `;
+
+                    jsonData.forEach(item => {
+                        let p = document.createElement('p');
+                        p.className = 'line';
+                        p.innerHTML = `NODE: <span class="cmd">${item.node}</span> | SSID: <span class="cmd">${item.ssid}</span> | PASS: <span class="cmd">${item.pass}</span>`;
+                        container.appendChild(p);
+                    });
+                }
+            } catch(e) {
+                console.log("Cloud sync error: ", e);
+            }
+        }
+
+        // Run refresh immediately, then every 10 seconds
+        refresh();
+        setInterval(refresh, 10000);
+    </script>
